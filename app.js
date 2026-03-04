@@ -1,5 +1,17 @@
 import { fetchEvents, updateTickets, saveUserTicket, updateRevenue } from './firebase.js';
-import { sendTicketConfirmationEmailNoQR } from './email.js';
+import { sendTicketConfirmationEmailNoQR, sendTicketPurchaseEmail } from './email.js';
+
+// Ensure SweetAlert sits above any modal overlays
+const __swalStyleId = 'swal-topmost-style';
+if (!document.getElementById(__swalStyleId)) {
+  const style = document.createElement('style');
+  style.id = __swalStyleId;
+  style.textContent = `
+    .swal2-container { z-index: 99999 !important; }
+    .success-popup { z-index: 99999 !important; }
+  `;
+  document.head.appendChild(style);
+}
 
 let currentEvent = null;
 let slideIndex = 0;
@@ -55,7 +67,7 @@ function createEventCard(event, eventId) {
 }
 
 // Show event popup with event details and initialize slider
-window.showEventPopup = function(encodedEventData, eventId) {
+export function showEventPopup(encodedEventData, eventId) {
   console.log("working");
   try {
     if (!encodedEventData) throw new Error("No event data provided");
@@ -171,7 +183,10 @@ window.showEventPopup = function(encodedEventData, eventId) {
   } catch (error) {
     console.error('Error showing event popup:', error);
   }
-};
+}
+
+// Keep global for existing inline onclick handlers
+window.showEventPopup = showEventPopup;
 
 // Close event popup
 window.closeEventPopup = function() {
@@ -613,34 +628,47 @@ export function submitPayment() {
               // Update available tickets for the event
               updateTickets(eventID, totalQuantity);
               
-              // Send confirmation email WITHOUT QR code
+              // Send confirmation email WITHOUT QR code (legacy)
               sendTicketConfirmationEmailNoQR(ticketData)
-                .then(emailResult => {
-                  const emailSent = emailResult !== null;
-                  console.log('Email notification status:', emailSent ? 'Sent' : 'Failed');
-                  
-                  // Sweet alert for success with email status
-                  Swal.fire({
-                    icon: 'success',
-                    title: 'Tickets purchased',
-                    html: `
-                      <p>Tickets purchased successfully! View them in your tickets tab.</p>
-                      ${emailSent ? '<p>A confirmation email has been sent to your email.</p>' : ''}
-                    `,
-                  });
-                })
                 .catch(error => {
-                  console.error('Error sending confirmation email:', error);
-                  // Still show success for purchase
-                  Swal.fire({
-                    icon: 'success',
-                    title: 'Tickets purchased',
-                    text: 'Tickets purchased successfully! View them in your tickets tab.',
-                  });
-                })
-                .finally(() => {
-                  closeEventPopup();
+                  console.error('Error sending legacy confirmation email:', error);
                 });
+
+              // Send new ticket purchase email via EmailJS (non-blocking)
+              sendTicketPurchaseEmail({
+                user_email: ticketData.email,
+                user_name: ticketData.name || ticketData.email,
+                order_id: ticketId,
+                event_title: ticketData.eventDetails.title,
+                event_date: ticketData.eventDetails.date,
+                event_time: ticketData.eventDetails.time,
+                event_location: ticketData.eventDetails.location,
+                tickets: ticketData.tickets,
+                eventDetails: ticketData.eventDetails,
+                total_quantity: ticketData.totalQuantity,
+                total_paid: ticketData.finalPrice,
+                banner_url: ticketData.eventDetails.imageUrl || '',
+              }).catch(err => {
+                console.error('Error sending ticket purchase email:', err);
+              });
+
+              // Close purchase modal before showing success
+              const purchaseModal = document.getElementById('eventPopup') || document.getElementById('purchaseModal') || document.getElementById('buyTicketsModal');
+              if (purchaseModal) {
+                purchaseModal.classList.add('hidden');
+                purchaseModal.style.display = 'none';
+              }
+              closeEventPopup();
+
+              // Sweet alert for success (on top due to injected style)
+              Swal.fire({
+                icon: 'success',
+                title: 'Tickets purchased',
+                html: `
+                  <p>Tickets purchased successfully! View them in your tickets tab.</p>
+                  <p>If configured, a confirmation email has been sent.</p>
+                `,
+              });
           })
           .catch(error => {
               console.error('Error saving ticket:', error);

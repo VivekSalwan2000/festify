@@ -3,6 +3,28 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.2.0/firebas
 import { config } from "./config.js";
 import { getApiKey } from "./firebase.js";
 
+const WELCOME_TEMPLATE_ID = "template_zvlax6l"; // Ensure this matches EmailJS dashboard
+const TICKET_TEMPLATE_ID = "template_aw6j1cc"; // Ticket purchase confirmation template
+
+async function ensureEmailJsInitialized() {
+  try {
+    const publicKey =
+      (await getApiKey("EMAIL_PUBLIC_KEY")) || config.EMAIL_PUBLIC_KEY;
+    if (window.emailjs && publicKey) {
+      // Avoid re-init
+      if (!window.__emailjs_initialized) {
+        window.emailjs.init(publicKey);
+        window.__emailjs_initialized = true;
+        console.log("EmailJS initialized for welcome emails");
+      }
+    } else {
+      console.warn("EmailJS or public key missing; init skipped");
+    }
+  } catch (err) {
+    console.error("Failed to initialize EmailJS", err);
+  }
+}
+
 /**
  * Generate QR code as a data URL
  * @param {Object} ticketData - The ticket data to encode in the QR code
@@ -48,27 +70,152 @@ export async function generateQRCode(ticketData) {
  * @param {string} userName - The name of the new user (optional)
  * @returns {Promise} - Promise resolving when email is sent
  */
-export async function sendWelcomeEmail(userEmail, userName = '') {
+export async function sendWelcomeEmail(userEmail) {
   try {
-    // Get EmailJS service ID from Firebase
-    const serviceID = await getApiKey('EMAIL_SERVICE_ID');
-    const templateID = 'template_ojujtlo';
+    await ensureEmailJsInitialized();
 
-    // Template parameters
+    const serviceID = await getApiKey("EMAIL_SERVICE_ID");
+    if (!serviceID) {
+      console.error("EmailJS service ID missing; welcome email skipped");
+      return null;
+    }
+
+    if (!userEmail) {
+      console.error("No email to send welcome email to; skipping");
+      return null;
+    }
+
     const templateParams = {
-      email: userEmail,
-      to_name: userName || userEmail.split('@')[0],
-      subject: 'Welcome to Festify!',
-      message: `Welcome to Festify! We're excited to have you on board. Start exploring amazing events or create your own.`,
+      user_email: userEmail,
+      user_name: userEmail,
+      to_email: userEmail,
+      to_name: userEmail,
+      app_url: window.location.origin
     };
 
-    // Send the email using EmailJS - use window.emailjs to access the global object
-    const response = await window.emailjs.send(serviceID, templateID, templateParams);
-    console.log('Welcome email sent successfully:', response.status, response.text);
+    console.log("Sending welcome email via EmailJS", {
+      serviceID,
+      templateID: WELCOME_TEMPLATE_ID,
+      to: templateParams.user_email,
+    });
+
+    const response = await window.emailjs.send(
+      serviceID,
+      WELCOME_TEMPLATE_ID,
+      templateParams
+    );
+    console.log(
+      "Welcome email sent successfully:",
+      response?.status,
+      response?.text
+    );
     return response;
   } catch (error) {
-    console.error('Error sending welcome email:', error);
+    console.error("Error sending welcome email:", error);
     // Don't throw the error to prevent disrupting the signup process
+    return null;
+  }
+}
+
+function buildTicketTableHtml(ticketBreakdown = {}, totalQty = 0, totalPaid = 0) {
+  const rows = [
+    { label: "General Admission", qty: ticketBreakdown.general || 0, price: ticketBreakdown.generalPrice || 0 },
+    { label: "Child", qty: ticketBreakdown.child || 0, price: ticketBreakdown.childPrice || 0 },
+    { label: "Senior", qty: ticketBreakdown.senior || 0, price: ticketBreakdown.seniorPrice || 0 }
+  ].filter(r => r.qty > 0);
+
+  return `
+    <table style="width:100%; border-collapse:collapse; font-family:Arial, sans-serif;">
+      <thead>
+        <tr style="background:#f3f4f6; text-align:left;">
+          <th style="padding:12px; border-bottom:1px solid #e5e7eb;">Ticket Type</th>
+          <th style="padding:12px; border-bottom:1px solid #e5e7eb;">Quantity</th>
+          <th style="padding:12px; border-bottom:1px solid #e5e7eb;">Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r => `
+          <tr>
+            <td style="padding:12px; border-bottom:1px solid #eef2f7;">${r.label}</td>
+            <td style="padding:12px; border-bottom:1px solid #eef2f7;">${r.qty}</td>
+            <td style="padding:12px; border-bottom:1px solid #eef2f7;">$${Number(r.price).toFixed(2)}</td>
+          </tr>
+        `).join("")}
+        <tr>
+          <td style="padding:12px; font-weight:700;">Total</td>
+          <td style="padding:12px; font-weight:700;">${totalQty}</td>
+          <td style="padding:12px; font-weight:700;">$${Number(totalPaid).toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+}
+
+export async function sendTicketPurchaseEmail(payload) {
+  try {
+    await ensureEmailJsInitialized();
+
+    const serviceID = await getApiKey("EMAIL_SERVICE_ID");
+    if (!serviceID) {
+      console.error("EmailJS service ID missing; ticket email skipped");
+      return null;
+    }
+
+    const userEmail = (payload?.user_email || "").trim();
+    if (!userEmail) {
+      console.error("No email to send ticket confirmation to; skipping");
+      return null;
+    }
+
+    const ticketBreakdown = payload?.tickets || {};
+    const ticketPrices = {
+      generalPrice: payload?.eventDetails?.generalPrice || 0,
+      childPrice: payload?.eventDetails?.childPrice || 0,
+      seniorPrice: payload?.eventDetails?.seniorPrice || 0,
+    };
+    const totalQty = payload?.total_quantity ?? payload?.totalQuantity ?? 0;
+    const totalPaid = payload?.total_paid ?? payload?.finalPrice ?? 0;
+
+    const ticket_table_html = buildTicketTableHtml(
+      {
+        general: ticketBreakdown.general,
+        child: ticketBreakdown.child,
+        senior: ticketBreakdown.senior,
+        ...ticketPrices
+      },
+      totalQty,
+      totalPaid
+    );
+
+    const templateParams = {
+      user_email: userEmail,
+      user_name: payload?.user_name || userEmail,
+      to_email: userEmail,
+      to_name: payload?.user_name || userEmail,
+      order_id: payload?.order_id || payload?.id || `ORD-${Date.now()}`,
+      event_title: payload?.event_title || payload?.eventDetails?.title || "",
+      event_date: payload?.event_date || payload?.eventDetails?.date || "",
+      event_time: payload?.event_time || payload?.eventDetails?.time || "",
+      event_location: payload?.event_location || payload?.eventDetails?.location || "",
+      ticket_table_html,
+      total_quantity: String(totalQty ?? ""),
+      total_paid: String(totalPaid ?? ""),
+      qr_note: payload?.qr_note || "Please present your Ticket QR code at the event entrance.",
+      banner_url: payload?.banner_url || ""
+    };
+
+    console.log("Ticket email recipient:", userEmail);
+    console.log("Ticket email order:", templateParams.order_id);
+
+    const response = await window.emailjs.send(
+      serviceID,
+      TICKET_TEMPLATE_ID,
+      templateParams
+    );
+    console.log("Ticket purchase email sent:", response?.status, response?.text);
+    return response;
+  } catch (error) {
+    console.error("Error sending ticket purchase email:", error);
     return null;
   }
 }

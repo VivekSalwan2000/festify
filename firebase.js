@@ -128,7 +128,7 @@ export async function getApiKey(keyName) {
 /* ------------------------------
    Authentication Functions
 ------------------------------ */
-export async function signUpUser(email, password) {
+export async function signUpUser(email, password, name = "") {
   const userCred = await createUserWithEmailAndPassword(auth, email, password);
   
   // Create a basic profile for the user
@@ -138,8 +138,13 @@ export async function signUpUser(email, password) {
     // Add any additional default fields you want for new users
   });
   
-  // Send welcome email to the user
-  await sendWelcomeEmail(email);
+  // Send welcome email to the user (non-blocking, with logging)
+  const userEmail = userCred.user?.email;
+  try {
+    await sendWelcomeEmail(userEmail);
+  } catch (err) {
+    console.error("Welcome email failed after signup:", err);
+  }
   
   return userCred;
 }

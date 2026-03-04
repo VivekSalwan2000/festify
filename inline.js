@@ -24,8 +24,12 @@ export async function handleSignIn(e, signInUser) {
 
 export async function handleSignUp(e, signUpUser) {
   e.preventDefault();
-  const email = document.getElementById('loginEmail').value;
+  const email = document.getElementById('loginEmail').value.trim();
   const password = document.getElementById('loginPassword').value;
+  if (!email || email.includes(" ") || !/^\S+@\S+\.\S+$/.test(email)) {
+    alert("Please enter a valid email address.");
+    return;
+  }
   await signUpUser(email, password);
   window.location.href = 'profile.html';
 } 

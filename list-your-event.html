@@ -14,6 +14,9 @@
   <!-- Your main stylesheet (if you have one) -->
   <link rel="stylesheet" href="list-your-event.css">
 
+  <!-- EmailJS SDK (must load before usage) -->
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
   <!-- Load your organizer.js to handle sign in/up -->
   <script type="module" src="organizer.js"></script>
 
@@ -387,7 +390,7 @@
       // Handle Sign In
       signInBtn.addEventListener('click', async (e) => {
         e.preventDefault();
-        const email = document.getElementById('loginEmail').value;
+          const email = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value;
         try {
           // Sign in the user
@@ -421,8 +424,16 @@
       // Handle Sign Up
       signUpBtn.addEventListener('click', async (e) => {
         e.preventDefault();
-        const email = document.getElementById('loginEmail').value;
+          const email = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value;
+          if (!email || email.includes(" ") || !/^\S+@\S+\.\S+$/.test(email)) {
+            Swal.fire({
+              icon: 'error',
+              title: 'Invalid Email',
+              text: 'Please enter a valid email address.'
+            });
+            return;
+          }
         try {
           await signUpUser(email, password);
           window.location.href = 'basic-org-dash.html';
@@ -689,6 +700,10 @@
       document.getElementById('forgotPasswordPopup').classList.add('hidden');
       document.getElementById('popup').classList.remove('hidden');
     }
+
+    // Expose password reset popups to global scope for event handlers
+    window.showForgotPasswordPopup = openForgotPasswordForm;
+    window.closeForgotPasswordPopup = closeForgotPasswordForm;
     
     function sendResetPasswordEmail() {
       const email = document.getElementById('resetEmail').value;

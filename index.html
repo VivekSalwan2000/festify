@@ -74,7 +74,7 @@
         // Handle Sign In
         signInBtn.addEventListener('click', async (e) => {
           e.preventDefault();
-          const email = document.getElementById('loginEmail').value;
+          const email = document.getElementById('loginEmail').value.trim();
           const password = document.getElementById('loginPassword').value;
           try {
             await signInUser(email, password);
@@ -88,8 +88,16 @@
         // Handle Sign Up
         signUpBtn.addEventListener('click', async (e) => {
           e.preventDefault();
-          const email = document.getElementById('loginEmail').value;
+          const email = document.getElementById('loginEmail').value.trim();
           const password = document.getElementById('loginPassword').value;
+          if (!email || email.includes(" ") || !/^\S+@\S+\.\S+$/.test(email)) {
+            Swal.fire({
+              icon: 'error',
+              title: 'Invalid Email',
+              text: 'Please enter a valid email address.'
+            });
+            return;
+          }
           try {
             await signUpUser(email, password);
             Swal.fire({
