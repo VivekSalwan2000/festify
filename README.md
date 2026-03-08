@@ -24,18 +24,6 @@ Youtube Video for demonstration [https://www.youtube.com/watch?v=VuXNThtdMFQ](ht
 - **Responsive Design**: Fully responsive interface that works on all devices
 - **Location Services**: Google Maps integration for event locations
 
-
-## Team Members 👥
-| Name | Student Number|
-|------|---------------|
-| [Gautam](https://github.com/gautam4036) - *Scrum Master* | 7340433 |
-| [Harmanjot Malhi](https://github.com/HarmanjotMalhi)| 7300973 |
-| [Kartikkumar Parekh](https://github.com/Kartik478) - *Product Owner*| 7107782 |
-| [Parampal Singh](https://github.com/parampalsingh1)| 7003114 |
-| [Rohal Kabir](https://github.com/rohal20)| 7105836 |
-| [Sumant Patel](https://github.com/Sumant123)| 6796841 |
-| [Vivek Salwan](https://github.com/VivekSalwan2000)| 6951826 |
-
 ## Getting Started
 ### Prerequisites
 - Node.js (for development tools and testing)
