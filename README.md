@@ -4,7 +4,7 @@ COSC 4P02: Software Engineering II
 Project: Festify - Where Your Events Become Festival
 
 ## Project Website and Demo
-Visit the live site at (https://festify.ca/)
+Visit the live site at (https://viveksalwan2000.github.io/festify/)
 
 Youtube Video for demonstration [https://www.youtube.com/watch?v=VuXNThtdMFQ](https://www.youtube.com/watch?v=VuXNThtdMFQ)
 
