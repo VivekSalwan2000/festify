@@ -5,7 +5,7 @@
 [![Live Demo](https://img.shields.io/badge/demo-festify.ca-blue)](https://festify.ca)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE.md)
 
-**Live site:** [festify.ca](https://festify.ca) · [GitHub Pages](https://viveksalwan2000.github.io/festify/)  
+**Live site:**  [GitHub Pages](https://viveksalwan2000.github.io/festify/)  
 **Demo video:** [YouTube walkthrough](https://www.youtube.com/watch?v=VuXNThtdMFQ)
 
 ---
