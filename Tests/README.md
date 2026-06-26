@@ -1,61 +1,32 @@
 # Festify Testing
 
-This directory contains the automated tests for the Festify project.
+Automated unit tests for Festify, run with Jest and jsdom.
 
-## Running Tests
+## Running tests
 
-### Using NPM Script
 ```bash
 npm test
 ```
 
-### Using Batch File (Windows)
-```bash
-./run-tests.bat
-```
+Coverage reports are written to `coverage/lcov-report/index.html`.
 
-### Using PowerShell (Windows)
-```bash
-./run-tests.ps1
-```
+## Test files
 
-## Test Coverage
+| File | Target |
+|------|--------|
+| `app.test.js` | Event rendering and popup helpers (`app.js`) |
+| `firebase.test.js` | Firebase data layer (`firebase.js`, mocked) |
+| `inline.test.js` | Auth popup helpers (`inline.js`) |
+| `organizer.test.js` | Organizer auth wiring (`organizer.js`) |
+| `script.test.js` | Dashboard formatting utilities (`utils.js` via `script.js`) |
+| `setup.js` | Shared mocks (localStorage, fetch, alert) |
 
-Test coverage reports are generated automatically when running tests. You can view the HTML coverage report at:
-```
-coverage/lcov-report/index.html
-```
+## Mocks
 
-## Test Structure
+Firebase CDN imports are mapped to `__mocks__/` via `moduleNameMapper` in `package.json`.
 
-- `app.test.js` - Tests for app.js (event rendering and filtering)
-- `firebase.test.js` - Tests for firebase.js (database operations)
-- `inline.test.js` - Tests for inline.js (utility functions)
-- `organizer.test.js` - Tests for organizer.js (organizer-specific functions)
-- `script.test.js` - Tests for script.js (general utility functions)
+## Adding tests
 
-## Mock Files
-
-Mocks for external dependencies are located in the `__mocks__` directory:
-
-- Firebase SDK mocks
-- Style mocks
-- File mocks
-
-## Configuration
-
-Jest is configured in `jest.config.js` with the following settings:
-
-- Uses jsdom test environment
-- Collects coverage information
-- Ignores node_modules and other non-source directories
-- Transforms JS files using Babel
-- Provides mocks for CSS and static files
-
-## Adding Tests
-
-When adding tests for new features:
-
-1. Create or update test files in the `Tests` directory
-2. Run tests to verify coverage
-3. Update mocks as needed for new external dependencies 
+1. Add or update files under `Tests/`.
+2. Run `npm test` and check coverage.
+3. Add mocks in `__mocks__/` when introducing new external dependencies.

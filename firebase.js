@@ -1,5 +1,9 @@
+/**
+ * Central Firebase data layer for Festify.
+ * Initializes a single Firebase app and exposes auth, Firestore, and Storage helpers
+ * used by the public site, organizer dashboards, and email integrations.
+ */
 import {config} from './config.js';
-// firebase.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-app.js";
 import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-analytics.js";
 import {
@@ -27,7 +31,7 @@ import {
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-storage.js";
 import { sendWelcomeEmail } from "./email.js";
 
-// TODO: Replace with your Firebase project configuration
+// Project config — web API key also lives in config.js for bootstrap
 const firebaseConfig = {
   apiKey: config.FIREBASE_API_KEY,
   authDomain: "festify-database.firebaseapp.com",
@@ -68,7 +72,6 @@ export async function storeApiKeys(customApiKeys = null) {
     
     // Set the API keys in the document
     await setDoc(apiKeysRef, apiKeys);
-    console.log("API keys stored successfully in Firebase.");
     return true;
   } catch (error) {
     console.error("Error storing API keys:", error);
@@ -96,7 +99,6 @@ export async function fetchApiKeys() {
       // Return the API keys
       return apiKeys;
     } else {
-      console.log("No API keys found in Firebase, attempting to store defaults");
       await storeApiKeys();
       return await fetchApiKeys();
     }
@@ -184,7 +186,11 @@ export async function saveUserProfile(uid, profileData) {
   await setDoc(docRef, profileData, { merge: true });
 }
 
-// Function to save a ticket purchase to a user's account
+/* ------------------------------
+   Ticket purchase (dual-write)
+   Saves to users/{uid}/tickets and the global tickets collection
+   so attendees can view tickets and organizers can query purchases.
+------------------------------ */
 export async function saveUserTicket(userId, ticketData) {
   try {
     // Create a reference to the tickets subcollection for this user
@@ -198,9 +204,8 @@ export async function saveUserTicket(userId, ticketData) {
     
     // Add the document to the tickets subcollection
     const docRef = await addDoc(ticketsCollectionRef, ticketWithTimestamp);
-    console.log("Ticket saved with ID:", docRef.id);
-    
-    // Explicitly preserve name and email fields when saving to global tickets collection
+
+    // Mirror purchase to global collection for organizer attendee lookups
     await saveTicketPurchase({
       ...ticketWithTimestamp,
       userId: userId,
@@ -221,14 +226,8 @@ export async function saveTicketPurchase(ticketData) {
   try {
     // Create a reference to the global tickets collection
     const ticketsCollectionRef = collection(db, "tickets");
-    
-    // Log the incoming ticket data to verify name and email are present
-    console.log("Saving ticket with user info:", {
-      name: ticketData.name,
-      email: ticketData.email
-    });
-    
-    // Ensure all relevant ticket details are included, removing phone field
+
+    // Normalize ticket shape for both legacy and multi-tier purchases
     const enhancedTicketData = {
       ...ticketData,
       // Make sure these fields exist (with defaults if not provided)
@@ -249,7 +248,6 @@ export async function saveTicketPurchase(ticketData) {
     
     // Add the ticket data to the global tickets collection
     const docRef = await addDoc(ticketsCollectionRef, enhancedTicketData);
-    console.log("Ticket purchase saved to global collection with ID:", docRef.id);
     return docRef.id;
   } catch (error) {
     console.error("Error saving ticket to global collection:", error);
@@ -281,13 +279,8 @@ export async function getUserTickets(userId) {
 
 // Define an asynchronous function to get the profile of a user by their unique ID (uid)
 export async function getUserProfile(uid) {
-  // Get the reference to the user document in the "users" collection by the provided uid
   const docRef = doc(db, "users", uid);
-
-  // Fetch the document snapshot from the database
   const snapshot = await getDoc(docRef);
-
-  // Check if the document exists and return the data, otherwise return null
   return snapshot.exists() ? snapshot.data() : null;
 }
 
@@ -295,33 +288,12 @@ export async function getUserProfile(uid) {
 // Define an asynchronous function to fetch all events
 export async function fetchEvents() {
   try {
-    console.log('Attempting to fetch events from Firestore...');
-    // Get the reference to the "events" collection in the database
     const eventsCol = collection(db, "events");
-    console.log('Events collection reference created');
-
-    // Execute the query to get the events snapshot
-    console.log('Executing getDocs query...');
     const eventsSnapshot = await getDocs(eventsCol);
-    console.log('Query executed, snapshot received');
 
-    // Map through the snapshot documents to create an array of event objects with their id and data
-    const eventsList = eventsSnapshot.docs.map(doc => {
-      const data = doc.data();
-      console.log('Event data:', data);
-      return { id: doc.id, ...data };
-    });
-
-    console.log('Total events fetched:', eventsList.length);
-    // Return the list of events
-    return eventsList;
+    return eventsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
   } catch (error) {
-    // Log any errors that occur during the fetch operation
     console.error("Error fetching events:", error);
-    console.error("Error details:", error.message);
-    console.error("Error stack:", error.stack);
-
-    // Return an empty array in case of an error
     return [];
   }
 }
@@ -357,7 +329,6 @@ export async function fetchUserEvents(userId) {
 export async function createNewEvent(eventData) {
   try {
     const docRef = await addDoc(collection(db, "events"), eventData);
-    console.log("Event created with ID:", docRef.id);
     return docRef.id;
   } catch (error) {
     console.error("Error creating event:", error);
@@ -391,24 +362,25 @@ export async function uploadEventImage(file) {
   }
 }
 
+/** Decrement remaining ticket inventory on the event document after a purchase. */
 export async function updateTickets(eventId, amount) {
   try {
     const eventRef = doc(db, "events", eventId);
     await updateDoc(eventRef, { tickets: increment(-amount) });
-    console.log(`Tickets decremented by ${amount} for event: ${eventId}`);
   } catch (error) {
     console.error(`Error decrementing tickets for event ${eventId}:`, error);
   }
 }
 
+/** Read-modify-write: add payment amount to the event's totalRevenue field. */
 export async function updateRevenue(eventId, payment){
   try {
     const docRef = doc(db, "events", eventId);
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
-      const currentRevenue = docSnap.data().totalRevenue || 0; // Get existing revenue, default to 0
-      const newRevenue = currentRevenue + payment; // Add new payment
+      const currentRevenue = docSnap.data().totalRevenue || 0;
+      const newRevenue = currentRevenue + payment;
 
       await updateDoc(docRef, {
         totalRevenue: newRevenue
@@ -424,7 +396,6 @@ export async function updateEvent(eventId, eventData) {
   try {
     const eventRef = doc(db, "events", eventId);
     await updateDoc(eventRef, eventData);
-    console.log("Event updated successfully");
     return true;
   } catch (error) {
     console.error("Error updating event:", error);
@@ -457,7 +428,6 @@ export async function saveFeedback(feedbackData) {
     
     // Add the document to the 'feedback' collection
     const docRef = await addDoc(feedbackCollectionRef, feedbackWithTimestamp);
-    console.log("Feedback saved with ID:", docRef.id);
     return docRef.id;
   } catch (error) {
     console.error("Error saving feedback:", error);
@@ -483,9 +453,6 @@ export async function getEventAttendees(eventId) {
       ...doc.data()
     }));
     
-    // Log the raw tickets data to debug
-    console.log("Retrieved tickets for event:", eventId, allTickets);
-    
     // Group tickets by email to consolidate purchases by the same person
     const attendeesByEmail = {};
     
@@ -502,9 +469,6 @@ export async function getEventAttendees(eventId) {
           totalPaid: 0,
           purchasedAt: ticket.purchasedAt
         };
-        
-        // Log the name we're using
-        console.log(`Setting attendee name for ${email}: "${ticket.name}"`);
       }
       
       // Handle different ticket structures
@@ -565,10 +529,6 @@ export async function getEventAttendees(eventId) {
     
     // Convert the attendees object to an array
     const attendees = Object.values(attendeesByEmail);
-    
-    // Log the final attendees data
-    console.log("Final processed attendees:", attendees);
-    
     return attendees;
   } catch (error) {
     console.error("Error fetching event attendees:", error);
@@ -609,7 +569,6 @@ export async function updateUserSubscription(userId, status) {
       subscriptionStatus: status,
       subscriptionUpdatedAt: new Date()
     });
-    console.log(`User ${userId} subscription updated to ${status}`);
     return true;
   } catch (error) {
     console.error("Error updating subscription status:", error);

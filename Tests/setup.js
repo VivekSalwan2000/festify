@@ -54,12 +54,8 @@ if (typeof window !== 'undefined') {
 
 // Add any other global mocks or setup needed for all tests
 
-// Clean up after each test
+// Clean up DOM between tests; avoid clearing module-level mocks set in individual suites
 afterEach(() => {
-  // Reset all mocks
-  jest.clearAllMocks();
-  
-  // Cleanup document body if needed
   if (typeof document !== 'undefined') {
     document.body.innerHTML = '';
   }

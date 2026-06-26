@@ -1,4 +1,7 @@
-// script.js
+/**
+ * PRO organizer dashboard — event CRUD, analytics, DALL-E posters, attendee lists.
+ * Redirects non-PRO users to basic-org-dash.html after checking subscriptionStatus.
+ */
 import {
   createNewEvent,
   fetchUserEvents,
@@ -13,6 +16,7 @@ import {
   getEventFeedback
 } from './firebase.js';
 import { generateEventPoster } from './dalle-api.js';
+import { formatDate, formatCurrency } from './utils.js';
 
 let currentUser = null;
 
@@ -24,9 +28,8 @@ onUserStateChanged(async (user) => {
     // Load user's profile from Firestore and populate profile form fields
     const profileData = await getUserProfile(user.uid);
     
-    // Check if the user is a basic user (not PRO) and redirect if needed
+    // Gate: PRO dashboard is only for subscriptionStatus === 'PRO'
     if (!profileData || profileData.subscriptionStatus !== 'PRO') {
-      console.log('Basic user detected in organization dashboard - redirecting to basic dashboard');
       window.location.href = 'basic-org-dash.html';
       return;
     }
@@ -48,20 +51,8 @@ onUserStateChanged(async (user) => {
   }
 });
 
-// Helper: Format date
-export function formatDate(dateString) {
-  const options = { day: 'numeric', month: 'long', year: 'numeric' };
-  return new Date(dateString).toLocaleDateString('en-US', options);
-}
-
-// Helper: Format currency
-export function formatCurrency(amount) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0
-  }).format(amount);
-}
+// Re-export for backward compatibility with existing tests
+export { formatDate, formatCurrency } from './utils.js';
 
 // Render events from Firestore for the current user
 async function renderEventsFromDB() {

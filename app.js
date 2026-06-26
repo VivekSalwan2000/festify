@@ -1,5 +1,10 @@
-import { fetchEvents, updateTickets, saveUserTicket, updateRevenue } from './firebase.js';
+/**
+ * Public event discovery and ticket checkout.
+ * Loads events from Firestore, renders the grid, and handles the purchase popup flow.
+ */
+import { fetchEvents, updateTickets, saveUserTicket, updateRevenue, getAuth } from './firebase.js';
 import { sendTicketConfirmationEmailNoQR, sendTicketPurchaseEmail } from './email.js';
+import { formatTime } from './utils.js';
 
 // Ensure SweetAlert sits above any modal overlays
 const __swalStyleId = 'swal-topmost-style';
@@ -15,14 +20,6 @@ if (!document.getElementById(__swalStyleId)) {
 
 let currentEvent = null;
 let slideIndex = 0;
-
-// Format time from 24-hour to 12-hour format with AM/PM
-function formatTime(time) {
-  const [hour, minute] = time.split(':');
-  const suffix = hour >= 12 ? 'PM' : 'AM';
-  const formattedHour = hour % 12 || 12;
-  return `${formattedHour}:${minute} ${suffix}`;
-}
 
 // Create HTML for an event card
 function createEventCard(event, eventId) {
@@ -68,18 +65,15 @@ function createEventCard(event, eventId) {
 
 // Show event popup with event details and initialize slider
 export function showEventPopup(encodedEventData, eventId) {
-  console.log("working");
   try {
     if (!encodedEventData) throw new Error("No event data provided");
     
     const eventData = decodeURIComponent(encodedEventData);
     const event = JSON.parse(eventData);
-    console.log(event);
     
     currentEvent = event;
     
     document.getElementById("eventID").value = eventId;
-    console.log(document.getElementById("eventID").value);
     const titleElem = document.getElementById('eventTitle');
     if (titleElem) titleElem.textContent = event.title || '';
     
@@ -301,7 +295,6 @@ async function renderEventsFromDB() {
       if (eventsGrid) eventsGrid.innerHTML = '<p>No events found</p>';
       return;
     }
-    console.log("hello", events);
     renderEvents(events);
   } catch (error) {
     console.error("Error rendering events:", error);
@@ -322,6 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 export function checkout() {
+  // Inject payment form into the event popup (mock card UI for demo checkout)
   const generalQuantity = parseInt(document.getElementById('generalQuantity').value);
   const seniorQuantity = parseInt(document.getElementById('seniorQuantity').value);
   const childQuantity = parseInt(document.getElementById('childQuantity').value);
@@ -460,7 +454,7 @@ window.applyPromoCode = function() {
 }
 
 export function submitPayment() {
-  // Validate form fields first
+  // --- Payment validation (profile name fields exist on profile.html only) ---
   const firstName = document.getElementById('firstName');
   const lastName = document.getElementById('lastName');
   const email = document.getElementById('email');
@@ -474,14 +468,14 @@ export function submitPayment() {
   errorMessage.style.display = 'none';
   
   inputs.forEach(input => {
-      input.classList.remove('error');
+      if (input) input.classList.remove('error');
   });
   
   // Check if any field is empty
   let hasError = false;
 
   // Validate first name
-  if (!firstName.value.trim()) {
+  if (firstName && !firstName.value.trim()) {
       firstName.classList.add('error');
       closeEventPopup();  // Close payment popup first
       Swal.fire({
@@ -496,7 +490,7 @@ export function submitPayment() {
   }
 
   // Validate last name
-  if (!lastName.value.trim()) {
+  if (lastName && !lastName.value.trim()) {
       lastName.classList.add('error');
       closeEventPopup();  // Close payment popup first
       Swal.fire({
@@ -511,7 +505,8 @@ export function submitPayment() {
   }
 
   inputs.forEach(input => {
-      if (!input.value.trim(  )) {
+      if (!input) return;
+      if (!input.value.trim()) {
           input.classList.add('error');
           hasError = true;
       }
@@ -581,18 +576,15 @@ export function submitPayment() {
   // Get the final price (either discounted or original)
   const finalPrice = currentEvent.discountedPrice || totalPrice;
   
-  // Import Firebase auth
-  import('https://www.gstatic.com/firebasejs/11.2.0/firebase-auth.js').then((module) => {
-      const auth = module.getAuth();
-      const user = auth.currentUser;
-      
-      if (!user) {
-          alert('You need to be logged in to purchase tickets');
-          return;
-      }
-      
-      // Save ticket information
-      const ticketData = {
+  const user = getAuth().currentUser;
+
+  if (!user) {
+      alert('You need to be logged in to purchase tickets');
+      return;
+  }
+
+  // Save ticket information
+  const ticketData = {
           eventId: eventID,
           eventDetails: {
               title: currentEvent.title,
@@ -615,73 +607,64 @@ export function submitPayment() {
           discountApplied: finalPrice < totalPrice,
           discountAmount: (totalPrice - finalPrice).toFixed(2),
           // Add user's name and email to ticket data
-          name: `${firstName.value.trim()} ${lastName.value.trim()}`,
+          name: `${firstName ? firstName.value.trim() : ''} ${lastName ? lastName.value.trim() : ''}`.trim(),
           email: email.value.trim()
       };
       
-      // Save ticket to user's account
-      saveUserTicket(user.uid, ticketData)
-          .then((ticketId) => {
-              // Add the ticket ID to the ticket data
-              ticketData.id = ticketId;
-              
-              // Update available tickets for the event
-              updateTickets(eventID, totalQuantity);
-              
-              // Send confirmation email WITHOUT QR code (legacy)
-              sendTicketConfirmationEmailNoQR(ticketData)
-                .catch(error => {
-                  console.error('Error sending legacy confirmation email:', error);
-                });
+  // --- Ticket purchase: save to Firestore, then update inventory and revenue ---
+  saveUserTicket(user.uid, ticketData)
+      .then((ticketId) => {
+          ticketData.id = ticketId;
 
-              // Send new ticket purchase email via EmailJS (non-blocking)
-              sendTicketPurchaseEmail({
-                user_email: ticketData.email,
-                user_name: ticketData.name || ticketData.email,
-                order_id: ticketId,
-                event_title: ticketData.eventDetails.title,
-                event_date: ticketData.eventDetails.date,
-                event_time: ticketData.eventDetails.time,
-                event_location: ticketData.eventDetails.location,
-                tickets: ticketData.tickets,
-                eventDetails: ticketData.eventDetails,
-                total_quantity: ticketData.totalQuantity,
-                total_paid: ticketData.finalPrice,
-                banner_url: ticketData.eventDetails.imageUrl || '',
-              }).catch(err => {
-                console.error('Error sending ticket purchase email:', err);
-              });
+          updateTickets(eventID, totalQuantity);
+          updateRevenue(eventID, finalPrice);
 
-              // Close purchase modal before showing success
-              const purchaseModal = document.getElementById('eventPopup') || document.getElementById('purchaseModal') || document.getElementById('buyTicketsModal');
-              if (purchaseModal) {
-                purchaseModal.classList.add('hidden');
-                purchaseModal.style.display = 'none';
-              }
-              closeEventPopup();
+          sendTicketConfirmationEmailNoQR(ticketData)
+            .catch(error => {
+              console.error('Error sending legacy confirmation email:', error);
+            });
 
-              // Sweet alert for success (on top due to injected style)
-              Swal.fire({
-                icon: 'success',
-                title: 'Tickets purchased',
-                html: `
-                  <p>Tickets purchased successfully! View them in your tickets tab.</p>
-                  <p>If configured, a confirmation email has been sent.</p>
-                `,
-              });
-          })
-          .catch(error => {
-              console.error('Error saving ticket:', error);
-              // Sweet alert for ticket failure
-              Swal.fire({
-                  icon: 'error',
-                  title: 'Payment failed',
-                  text: 'Payment failure alert, try again',
-              });
+          sendTicketPurchaseEmail({
+            user_email: ticketData.email,
+            user_name: ticketData.name || ticketData.email,
+            order_id: ticketId,
+            event_title: ticketData.eventDetails.title,
+            event_date: ticketData.eventDetails.date,
+            event_time: ticketData.eventDetails.time,
+            event_location: ticketData.eventDetails.location,
+            tickets: ticketData.tickets,
+            eventDetails: ticketData.eventDetails,
+            total_quantity: ticketData.totalQuantity,
+            total_paid: ticketData.finalPrice,
+            banner_url: ticketData.eventDetails.imageUrl || '',
+          }).catch(err => {
+            console.error('Error sending ticket purchase email:', err);
           });
-  });
 
-  updateRevenue(eventID, finalPrice);
+          const purchaseModal = document.getElementById('eventPopup') || document.getElementById('purchaseModal') || document.getElementById('buyTicketsModal');
+          if (purchaseModal) {
+            purchaseModal.classList.add('hidden');
+            purchaseModal.style.display = 'none';
+          }
+          closeEventPopup();
+
+          Swal.fire({
+            icon: 'success',
+            title: 'Tickets purchased',
+            html: `
+              <p>Tickets purchased successfully! View them in your tickets tab.</p>
+              <p>If configured, a confirmation email has been sent.</p>
+            `,
+          });
+      })
+      .catch(error => {
+          console.error('Error saving ticket:', error);
+          Swal.fire({
+              icon: 'error',
+              title: 'Payment failed',
+              text: 'Payment failure alert, try again',
+          });
+      });
 }
 
 window.checkout = checkout;

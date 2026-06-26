@@ -1,5 +1,4 @@
-// email.js - Email sending functionality
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.2.0/firebase-app.js";
+/** EmailJS integration — welcome emails, ticket confirmations, and QR generation. */
 import { config } from "./config.js";
 import { getApiKey } from "./firebase.js";
 
@@ -15,7 +14,6 @@ async function ensureEmailJsInitialized() {
       if (!window.__emailjs_initialized) {
         window.emailjs.init(publicKey);
         window.__emailjs_initialized = true;
-        console.log("EmailJS initialized for welcome emails");
       }
     } else {
       console.warn("EmailJS or public key missing; init skipped");
@@ -93,21 +91,10 @@ export async function sendWelcomeEmail(userEmail) {
       app_url: window.location.origin
     };
 
-    console.log("Sending welcome email via EmailJS", {
-      serviceID,
-      templateID: WELCOME_TEMPLATE_ID,
-      to: templateParams.user_email,
-    });
-
     const response = await window.emailjs.send(
       serviceID,
       WELCOME_TEMPLATE_ID,
       templateParams
-    );
-    console.log(
-      "Welcome email sent successfully:",
-      response?.status,
-      response?.text
     );
     return response;
   } catch (error) {
@@ -204,15 +191,11 @@ export async function sendTicketPurchaseEmail(payload) {
       banner_url: payload?.banner_url || ""
     };
 
-    console.log("Ticket email recipient:", userEmail);
-    console.log("Ticket email order:", templateParams.order_id);
-
     const response = await window.emailjs.send(
       serviceID,
       TICKET_TEMPLATE_ID,
       templateParams
     );
-    console.log("Ticket purchase email sent:", response?.status, response?.text);
     return response;
   } catch (error) {
     console.error("Error sending ticket purchase email:", error);
@@ -291,17 +274,7 @@ export async function sendTicketConfirmationEmail(ticketData) {
       total_price: finalTotalPrice
     };
 
-    // Log template parameters for debugging
-    console.log('Sending email with params:', {
-      general_price: generalPrice,
-      senior_price: seniorPrice,
-      child_price: childPrice,
-      order_id: orderId
-    });
-
-    // Send the email using EmailJS
     const response = await window.emailjs.send(serviceID, templateID, templateParams);
-    console.log('Ticket confirmation email sent successfully:', response.status, response.text);
     return response;
   } catch (error) {
     console.error('Error sending ticket confirmation email:', error);

@@ -1,5 +1,4 @@
 // DALL-E API Integration
-import { config } from './config.js';
 import { getApiKey } from './firebase.js';
 
 const API_URL = 'https://api.openai.com/v1/images/generations';

@@ -1,4 +1,7 @@
-// script.js
+/**
+ * Free-tier organizer dashboard — same event management with PRO features locked.
+ * Redirects PRO users to organization-dashboard.html.
+ */
 import {
     createNewEvent,
     fetchUserEvents,
@@ -10,17 +13,11 @@ import {
     getEventById,
     deleteEvent,
     getEventAttendees,
-    getEventFeedback
+    getEventFeedback,
+    updateUserSubscription
   } from './firebase.js';
 import { generateEventPoster } from './dalle-api.js';
-import { 
-  getFirestore, 
-  doc, 
-  updateDoc 
-} from "https://www.gstatic.com/firebasejs/11.2.0/firebase-firestore.js";
-
-// Initialize Firestore
-const db = getFirestore();
+import { formatDate, formatCurrency } from './utils.js';
 
 let currentUser = null;
 
@@ -32,9 +29,8 @@ onUserStateChanged(async (user) => {
     // Load user's profile from Firestore and populate profile form fields
     const profileData = await getUserProfile(user.uid);
     
-    // Check if the user is a PRO subscriber and redirect if needed
+    // Gate: PRO users belong on the full dashboard
     if (profileData && profileData.subscriptionStatus === 'PRO') {
-      console.log('PRO user detected in basic dashboard - redirecting to organization dashboard');
       window.location.href = 'organization-dashboard.html';
       return;
     }
@@ -55,21 +51,6 @@ onUserStateChanged(async (user) => {
     window.location.href = 'list-your-event.html';
   }
 });
-
-// Helper: Format date
-export function formatDate(dateString) {
-  const options = { day: 'numeric', month: 'long', year: 'numeric' };
-  return new Date(dateString).toLocaleDateString('en-US', options);
-}
-
-// Helper: Format currency
-export function formatCurrency(amount) {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: 'USD',
-    minimumFractionDigits: 0
-  }).format(amount);
-}
 
 // Render events from Firestore for the current user
 async function renderEventsFromDB() {
@@ -1176,14 +1157,8 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
         
-        // Save the subscription status manually instead of using the function
         try {
-          // Update user subscription directly in firestore
-          const userRef = doc(db, "users", currentUser.uid);
-          await updateDoc(userRef, {
-            subscriptionStatus: 'PRO',
-            subscriptionUpdatedAt: new Date()
-          });
+          await updateUserSubscription(currentUser.uid, 'PRO');
           
           // Show success message and wait for user to click OK
           const result = await Swal.fire({
@@ -1259,7 +1234,6 @@ function showPaymentModal() {
   if (overlay && modal) {
     overlay.classList.add('active');
     modal.classList.add('active');
-    console.log('Payment modal opened');
   } else {
     console.error('Payment modal elements not found');
   }
@@ -1273,7 +1247,6 @@ function hidePaymentModal() {
   if (overlay && modal) {
     overlay.classList.remove('active');
     modal.classList.remove('active');
-    console.log('Payment modal closed');
   } else {
     console.error('Payment modal elements not found');
   }

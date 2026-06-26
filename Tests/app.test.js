@@ -39,17 +39,11 @@ jest.mock('../firebase.js', () => ({
   ]),
   updateTickets: jest.fn().mockResolvedValue(true),
   saveUserTicket: jest.fn().mockResolvedValue('ticket123'),
-  updateRevenue: jest.fn().mockResolvedValue(true)
+  updateRevenue: jest.fn().mockResolvedValue(true),
+  getAuth: jest.fn().mockReturnValue({ currentUser: { uid: 'user123' } })
 }));
 
-// Define formatTime helper to test our event display
-function formatTime(time) {
-  const [hour, minute] = time.split(':');
-  const hourNum = parseInt(hour, 10);
-  const suffix = hourNum >= 12 ? 'PM' : 'AM';
-  const formattedHour = hourNum % 12 || 12;
-  return `${formattedHour}:${minute} ${suffix}`;
-}
+import { formatTime } from '../utils.js';
 
 // Define a simplified test version of createEventCard based on app.js implementation
 function createEventCard(event, eventId) {
